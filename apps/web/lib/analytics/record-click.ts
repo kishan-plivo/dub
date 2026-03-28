@@ -9,6 +9,7 @@ import { geolocation, ipAddress } from "@vercel/functions";
 import { userAgent } from "next/server";
 import { clickCache } from "../api/links/click-cache";
 import { ExpandedLink, transformLink } from "../api/links/utils/transform-link";
+import { clickhouse } from "../clickhouse";
 import {
   detectBot,
   detectQr,
@@ -146,19 +147,29 @@ export async function recordClick({
     referer_url: referer || "(direct)",
   };
 
+  // Convert boolean fields to UInt8 (0 or 1) for ClickHouse
+  const clickDataForClickHouse = {
+    ...clickData,
+    bot: clickData.bot ? 1 : 0,
+    qr: clickData.qr ? 1 : 0,
+  };
+
   const hasWebhooks = webhookIds && webhookIds.length > 0;
 
-  const [, , , , workspaceRows] = await Promise.allSettled([
-    fetch(
-      `${process.env.TINYBIRD_API_URL}/v0/events?name=dub_click_events&wait=true`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.TINYBIRD_API_KEY}`,
-        },
-        body: JSON.stringify(clickData),
-      },
-    ).then((res) => res.json()),
+  const [analyticsResult, , , , workspaceRows] = await Promise.allSettled([
+    // Send data to ClickHouse instead of Tinybird
+    clickhouse
+      .insert({
+        table: "dub_click_events",
+        values: [clickDataForClickHouse],
+        format: "JSONEachRow",
+      })
+      .catch((error) => {
+        console.error("Error inserting click event to ClickHouse:", error);
+        // Decide if/how to handle the error (e.g., retry, log differently)
+        // Returning null or a specific error object might be appropriate
+        return { error: "ClickHouse insert failed" };
+      }),
 
     // cache the click ID in Redis for 1 hour
     clickCache.set({ domain, key, ip, clickId }),
@@ -166,9 +177,12 @@ export async function recordClick({
     // cache the click data for 5 mins
     // we're doing this because ingested click events are not available immediately in Tinybird
     trackConversion &&
-      redis.set(`clickCache:${clickId}`, clickData, {
-        ex: 60 * 5,
-      }),
+      redis.set(
+        `clickCache:${clickId}`,
+        JSON.stringify(clickData),
+        "EX",
+        60 * 5,
+      ),
 
     // increment the click count for the link (based on their ID)
     // we have to use planetscale connection directly (not prismaEdge) because of connection pooling
@@ -192,6 +206,20 @@ export async function recordClick({
         )
       : null,
   ]);
+
+  // Log if ClickHouse insert failed
+  if (
+    analyticsResult.status === "fulfilled" &&
+    analyticsResult.value &&
+    typeof analyticsResult.value === "object" &&
+    "error" in analyticsResult.value
+  ) {
+    console.warn(
+      "ClickHouse insert failed for click ID:",
+      clickId,
+      analyticsResult.value.error,
+    );
+  }
 
   const workspace =
     workspaceRows.status === "fulfilled" &&

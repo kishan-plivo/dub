@@ -1,5 +1,6 @@
 import { nanoid } from "@dub/utils";
 import "dotenv-flow/config";
+import { clickhouse } from "../lib/clickhouse";
 
 const links = [
   {
@@ -61,26 +62,28 @@ async function seedLinkMetadata() {
   for (let i = 0; i < 5; i++) {
     const link = links[i];
 
-    fetch(
-      `${process.env.TINYBIRD_API_URL}/v0/events?name=dub_links_metadata&wait=true`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.TINYBIRD_DEMO_API_KEY}`,
-        },
-        body: JSON.stringify({
-          timestamp: Date.now(),
-          link_id: link.id,
-          domain: link.domain,
-          key: link.shortLink.split("/")[1],
-          url: link.url,
-          tag_ids: [],
-          workspace_id: "ws_cl7pj5kq4006835rbjlt2ofka",
-          created_at: new Date().toISOString(),
-          deleted: 0,
-        }),
-      },
-    );
+    const metadata = {
+      timestamp: new Date().toISOString(),
+      link_id: link.id,
+      domain: link.domain,
+      key: link.shortLink.split("/")[1],
+      url: link.url,
+      tag_ids: [],
+      workspace_id: "ws_cl7pj5kq4006835rbjlt2ofka",
+      created_at: new Date().toISOString(),
+      deleted: 0,
+    };
+
+    try {
+      const result = await clickhouse.insert({
+        table: "dub_links_metadata",
+        values: [metadata],
+        format: "JSONEachRow",
+      });
+      console.log(`dub_links_metadata insert ${i + 1}:`, result.query_id);
+    } catch (error) {
+      console.error(`Error inserting dub_links_metadata ${i + 1}:`, error);
+    }
   }
 }
 
@@ -124,22 +127,28 @@ async function seedClicks(count = 10000) {
     };
   });
 
-  const ndjson = data.map((event) => JSON.stringify(event)).join("\n");
-
-  const response = await fetch(
-    `${process.env.TINYBIRD_API_URL}/v0/events?name=dub_click_events&wait=true`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.TINYBIRD_DEMO_API_KEY}`,
-      },
-      body: ndjson,
-    },
-  );
-
-  const sent = await response.json();
-
-  console.log("dub_click_events", sent);
+  const batchSize = 1000;
+  for (let i = 0; i < data.length; i += batchSize) {
+    const batch = data.slice(i, i + batchSize);
+    try {
+      const result = await clickhouse.insert({
+        table: "dub_click_events",
+        values: batch,
+        format: "JSONEachRow",
+      });
+      console.log(
+        `dub_click_events batch ${i / batchSize + 1}/${Math.ceil(
+          data.length / batchSize,
+        )}:`,
+        result.query_id,
+      );
+    } catch (error) {
+      console.error(
+        `Error inserting dub_click_events batch ${i / batchSize + 1}:`,
+        error,
+      );
+    }
+  }
 }
 
 // Seed lead events
@@ -150,7 +159,6 @@ async function seedLeads(count = 10) {
       countries[Math.floor(Math.random() * countries.length)];
 
     return {
-      // random date in the last 30 days
       timestamp: new Date(
         Date.now() - Math.floor(Math.random() * 30 * 24 * 60 * 60 * 1000),
       ).toISOString(),
@@ -186,22 +194,28 @@ async function seedLeads(count = 10) {
     };
   });
 
-  const ndjson = data.map((event) => JSON.stringify(event)).join("\n");
-
-  const response = await fetch(
-    `${process.env.TINYBIRD_API_URL}/v0/events?name=dub_lead_events&wait=true`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.TINYBIRD_DEMO_API_KEY}`,
-      },
-      body: ndjson,
-    },
-  );
-
-  const sent = await response.json();
-
-  console.log("dub_lead_events", sent);
+  const batchSize = 1000;
+  for (let i = 0; i < data.length; i += batchSize) {
+    const batch = data.slice(i, i + batchSize);
+    try {
+      const result = await clickhouse.insert({
+        table: "dub_lead_events",
+        values: batch,
+        format: "JSONEachRow",
+      });
+      console.log(
+        `dub_lead_events batch ${i / batchSize + 1}/${Math.ceil(
+          data.length / batchSize,
+        )}:`,
+        result.query_id,
+      );
+    } catch (error) {
+      console.error(
+        `Error inserting dub_lead_events batch ${i / batchSize + 1}:`,
+        error,
+      );
+    }
+  }
 }
 
 // Seed sales events
@@ -212,7 +226,6 @@ async function seedSales(count = 5) {
       countries[Math.floor(Math.random() * countries.length)];
 
     return {
-      // random date in the last 30 days
       timestamp: new Date(
         Date.now() - Math.floor(Math.random() * 30 * 24 * 60 * 60 * 1000),
       ).toISOString(),
@@ -226,7 +239,6 @@ async function seedSales(count = 5) {
       continent,
       device: devices[Math.floor(Math.random() * devices.length)],
       invoice_id: nanoid(16),
-      // random amount between $24 and $99
       amount: Math.floor(Math.random() * 75 + 24) * 100,
       currency: "USD",
       payment_processor: "stripe",
@@ -253,22 +265,28 @@ async function seedSales(count = 5) {
     };
   });
 
-  const ndjson = data.map((event) => JSON.stringify(event)).join("\n");
-
-  const response = await fetch(
-    `${process.env.TINYBIRD_API_URL}/v0/events?name=dub_sale_events&wait=true`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.TINYBIRD_DEMO_API_KEY}`,
-      },
-      body: ndjson,
-    },
-  );
-
-  const sent = await response.json();
-
-  console.log("dub_sale_events", sent);
+  const batchSize = 1000;
+  for (let i = 0; i < data.length; i += batchSize) {
+    const batch = data.slice(i, i + batchSize);
+    try {
+      const result = await clickhouse.insert({
+        table: "dub_sale_events",
+        values: batch,
+        format: "JSONEachRow",
+      });
+      console.log(
+        `dub_sale_events batch ${i / batchSize + 1}/${Math.ceil(
+          data.length / batchSize,
+        )}:`,
+        result.query_id,
+      );
+    } catch (error) {
+      console.error(
+        `Error inserting dub_sale_events batch ${i / batchSize + 1}:`,
+        error,
+      );
+    }
+  }
 }
 
 main();

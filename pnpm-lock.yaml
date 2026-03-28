@@ -45,6 +45,9 @@ importers:
       '@chronark/zod-bird':
         specifier: ^0.3.9
         version: 0.3.10
+      '@clickhouse/client':
+        specifier: ^1.11.1
+        version: 1.11.1
       '@dub/analytics':
         specifier: ^0.0.27
         version: 0.0.27
@@ -2117,6 +2120,17 @@ packages:
     resolution: {integrity: sha512-QkGvy8Lz+NTGPOfBH2lIEAxiaizp9vrEufxsi1wYz8WM0/ADqs4hUqO1zRjt7ntoZdKiXCcnpZtzUMdOjfo5AQ==}
     dependencies:
       zod: 3.24.3
+    dev: false
+
+  /@clickhouse/client-common@1.11.1:
+    resolution: {integrity: sha512-bme0le2yhDSAh13d2fxhSW5ZrNoVqZ3LTyac8jK6hNH0qkksXnjYkLS6KQalPU6NMpffxHmpI4+/Gi2MnX0NCA==}
+    dev: false
+
+  /@clickhouse/client@1.11.1:
+    resolution: {integrity: sha512-u9h++h72SmWystijNqfNvMkfA+5+Y1LNfmLL/odCL3VgI3oyAPP9ubSw/Yrt2zRZkLKehMMD1kuOej0QHbSoBA==}
+    engines: {node: '>=16'}
+    dependencies:
+      '@clickhouse/client-common': 1.11.1
     dev: false
 
   /@cspotcode/source-map-support@0.8.1:
